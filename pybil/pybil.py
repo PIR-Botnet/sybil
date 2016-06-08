@@ -10,8 +10,10 @@ port = int(sys.argv[1])
 ADDR = (HOST, port)
 TIMEOUT = 1000
 BUFSIZE = 1024
+TTL = 30
 
 buf = []
+sent = []
 neighborfile = sys.argv[2]
 neighbors = []
 
@@ -72,6 +74,22 @@ def processmsg(msg, addr):
     print("id: %s, ttl: %s, order: %s, data: %s" % (idmsg, time.strftime("%d %b %Y %H:%M:%S", time.localtime(ttl)), order, data))
 
 
+class MsgCleaner(threading.Thread):
+
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.running = True
+
+    def run(self):
+        while self.running is True:
+            for msg in sent:
+                if time.time() - msg[2] > TTL:
+                    sent.remove(msg)
+
+    def kill(self):
+        self.running = False
+
+
 class Server(threading.Thread):
 
     def __init__(self):
@@ -109,10 +127,12 @@ class Client(threading.Thread):
             if buf:
                 msg, addr, ttl = buf[0]
                 if ttl - time.time() > 0:
-                    for neighbor in neighbors:
-                        if not (neighbor[0], neighbor[1]) == addr:
-                            client.sendto(msg.encode(), (neighbor[0], neighbor[1]))
-                            print("Sent: %s to %s" % (msg, (neighbor[0], neighbor[1])))
+                    if buf[0] not in sent:
+                        for neighbor in neighbors:
+                            if not (neighbor[0], neighbor[1]) == addr:
+                                client.sendto(msg.encode(), (neighbor[0], neighbor[1]))
+                                sent.append(buf[0])
+                                print("Sent: %s to %s" % (msg, (neighbor[0], neighbor[1])))
                 # else:
                     # print("TTL expired")
                 delmsg()
@@ -120,7 +140,9 @@ class Client(threading.Thread):
 
 if __name__ == "__main__":
     loadneighbors(neighborfile)
+    msgcleaner = MsgCleaner()
     server = Server()
     client = Client()
+    msgcleaner.start()
     server.start()
     client.start()
