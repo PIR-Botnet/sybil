@@ -20,19 +20,22 @@ def loadneighbors(filename):
     with open(filename) as f:
         data = f.read(4096)
 
-    data = data.replace("\n", "")
-    dsplit = data.split(';')
+    data = data.replace("\n", "").split(';')
 
-    for neighbor in dsplit:
+    for neighbor in data:
         if neighbor:
-            nsplit = neighbor.split(',')
-            nip = nsplit[0]
-            nport = int(nsplit[1])
+            neighbor = neighbor.split(',')
+            nip = neighbor[0]
+            nport = int(neighbor[1])
             neighbors.append((nip, nport))
 
 
 def addneighbor(addr):
     neighbors.append(addr)
+
+
+def updateneighbors(addr):
+    addneighbor(addr)
 
 
 def addmsg(msg, addr, ttl):
@@ -84,7 +87,7 @@ class Server(threading.Thread):
             if validatemsg(msg.decode()):
                 processmsg(msg.decode(), addr)
             if addr not in neighbors:
-                addneighbor(addr)
+                updateneighbors(addr)
             # msg.decode()
             # print("Received: %s from %s" % (msg, addr))
             # addmsg("msg received", addr)
