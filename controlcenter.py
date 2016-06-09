@@ -41,6 +41,8 @@ class Client(threading.Thread):
                     # print("TTL expired")
                 delmsg()
 
+            time.sleep(0.0001)
+
 
 class Text_Input(threading.Thread):
 
@@ -59,7 +61,7 @@ class Text_Input(threading.Thread):
                 msg = "" + msgid + ";" + str(ttl) + ";" + order + ";" + data
 
                 addmsg(msg, ("localhost", port), ttl)
-                time.sleep(0)
+                time.sleep(0.0001)
 
         def kill(self):
             self.running = False

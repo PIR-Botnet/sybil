@@ -17,6 +17,8 @@ sent = []
 neighborfile = sys.argv[2]
 neighbors = []
 
+lock = threading.RLock()
+
 
 def loadneighbors(filename):
     with open(filename) as f:
@@ -82,9 +84,12 @@ class MsgCleaner(threading.Thread):
 
     def run(self):
         while self.running is True:
-            for msg in sent:
-                if time.time() - msg[2] > TTL:
-                    sent.remove(msg)
+            with lock:
+                for msg in sent:
+                    if time.time() - msg[2] > TTL:
+                        sent.remove(msg)
+
+            time.sleep(0.0001)
 
     def kill(self):
         self.running = False
@@ -102,13 +107,19 @@ class Server(threading.Thread):
 
         while self.running is True:
             msg, addr = server.recvfrom(BUFSIZE)
-            if validatemsg(msg.decode()):
-                processmsg(msg.decode(), addr)
-            if addr not in neighbors:
-                updateneighbors(addr)
-            # msg.decode()
-            # print("Received: %s from %s" % (msg, addr))
-            # addmsg("msg received", addr)
+            if msg and addr:
+                print("Received: %s from %s" % (msg, addr))
+                print("")
+                with lock:
+                    if validatemsg(msg.decode()):
+                        processmsg(msg.decode(), addr)
+                    if addr not in neighbors:
+                        updateneighbors(addr)
+                # msg.decode()
+                # print("Received: %s from %s" % (msg, addr))
+                # addmsg("msg received", addr)
+
+            time.sleep(0.0001)
 
     def kill(self):
         self.running = False
@@ -124,18 +135,21 @@ class Client(threading.Thread):
         client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         while self.running is True:
-            if buf:
-                msg, addr, ttl = buf[0]
-                if ttl - time.time() > 0:
-                    if buf[0] not in sent:
-                        for neighbor in neighbors:
-                            if not (neighbor[0], neighbor[1]) == addr:
-                                client.sendto(msg.encode(), (neighbor[0], neighbor[1]))
-                                sent.append(buf[0])
-                                print("Sent: %s to %s" % (msg, (neighbor[0], neighbor[1])))
-                # else:
-                    # print("TTL expired")
-                delmsg()
+            with lock:
+                if buf:
+                    msg, addr, ttl = buf[0]
+                    if ttl - time.time() > 0:
+                        if buf[0] not in sent:
+                            for neighbor in neighbors:
+                                if not (neighbor[0], neighbor[1]) == addr:
+                                    client.sendto(msg.encode(), (neighbor[0], neighbor[1]))
+                                    sent.append(buf[0])
+                                    print("Sent: %s to %s" % (msg, (neighbor[0], neighbor[1])))
+                    # else:
+                        # print("TTL expired")
+                    delmsg()
+
+            time.sleep(0.0001)
 
 
 if __name__ == "__main__":
