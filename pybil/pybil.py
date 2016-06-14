@@ -71,9 +71,37 @@ def processmsg(msg, addr):
     ttl = float(splitmsg[1])
     order = splitmsg[2]
     data = splitmsg[3::]
+    data = data.split(',')
+
+    if order == "PING":
+        ping(data)
+    elif order == "ALIVE":
+        alive(data)
+    elif order == "HELLO":
+        hello(data)
+    elif order == "PEERS":
+        peers(data)
 
     addmsg(msg, addr, ttl)
     print("id: %s, ttl: %s, order: %s, data: %s" % (idmsg, time.strftime("%d %b %Y %H:%M:%S", time.localtime(ttl)), order, data))
+
+
+def ping(data):
+    host = data[0]
+    port = int(data[0])
+
+
+def alive(data):
+    host = data[0]
+    port = int(data[0])
+    id = host + ':' + port
+    neighbors[id][2] = True
+
+
+def hello(data):
+    host = data[0]
+    port = int(data[1])
+    addneighbor((host, port))
 
 
 class MsgCleaner(threading.Thread):
