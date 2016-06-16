@@ -1,3 +1,3 @@
-localhost,2425;
-localhost,2426;
-localhost,2427;
+localhost,2425,1;
+localhost,2426,1;
+localhost,2427,1;

@@ -5,6 +5,8 @@ import sys
 import threading
 import time
 
+from message import Message
+
 HOST = ''
 port = int(sys.argv[1])
 ADDR = (HOST, port)
@@ -31,15 +33,30 @@ def loadneighbors(filename):
             neighbor = neighbor.split(',')
             nip = neighbor[0]
             nport = int(neighbor[1])
-            neighbors.append((nip, nport))
+
+            if int(neighbor[2]) == 1:
+                sybil = True
+            else:
+                sybil = False
+
+            neighbors.append((nip, nport, sybil))
 
 
-def addneighbor(addr):
-    neighbors.append(addr)
+def addneighbor(addr, sybil):
+    neighbors.append((addr[0], addr[1], sybil))
 
 
-def updateneighbors(addr):
-    addneighbor(addr)
+def updateneighbors(addr, sybil):
+    addneighbor(addr, sybil)
+
+
+def listneighbors():
+    nlist = []
+
+    for neighbor in neighbors:
+        nlist.append(str(neighbor[0]) + ":" + str(neighbor[1]))
+
+    return nlist
 
 
 def addmsg(msg, addr, ttl):
@@ -89,6 +106,9 @@ def processmsg(msg, addr):
 def ping(data):
     host = data[0]
     port = int(data[0])
+    ttl = 1
+    msg = Message(ttl, 'ALIVE', [HOST, PORT])
+    addmsg(msg, ADDR, ttl)
 
 
 def alive(data):
@@ -101,7 +121,11 @@ def alive(data):
 def hello(data):
     host = data[0]
     port = int(data[1])
-    addneighbor((host, port))
+    if (host, port, False) not in neighbors:
+        updateneighbors((host, port), False)
+    ttl = 1
+    msg = Message(ttl, 'PEERS', listneighbors())
+    addmsg(msg, ADDR, ttl)
 
 
 class MsgCleaner(threading.Thread):

@@ -22,6 +22,31 @@ def delmsg():
     buf.pop(0)
 
 
+class Server(threading.Thread):
+
+    def __init__(self):
+        threading.Thread.__init__(self)
+        self.running = True
+
+    def run(self):
+        server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        server.bind(ADDR)
+
+        while self.running is True:
+            msg, addr = server.recvfrom(BUFSIZE)
+            if msg and addr:
+                print("Received: %s from %s" % (msg, addr))
+                print("")
+                # msg.decode()
+                # print("Received: %s from %s" % (msg, addr))
+                # addmsg("msg received", addr)
+
+            time.sleep(0.0001)
+
+    def kill(self):
+        self.running = False
+
+
 class Client(threading.Thread):
 
     def __init__(self):
@@ -58,7 +83,7 @@ class Text_Input(threading.Thread):
                 port = int(input("Port: "))
                 ttl = (time.time() + 10)
 
-                msg = "" + msgid + ";" + str(ttl) + ";" + order + ";" + data
+                msg = "" + msgid + ";" + str(1) + ";" + order + ";" + data
 
                 addmsg(msg, ("localhost", port), ttl)
                 time.sleep(0.0001)
@@ -71,3 +96,5 @@ if __name__ == "__main__":
     textinput.start()
     client = Client()
     client.start()
+    server = Server()
+    server.start()
