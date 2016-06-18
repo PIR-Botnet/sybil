@@ -6,8 +6,9 @@ import threading
 import time
 
 from message import Message
+from peer import Peer
 
-HOST = ''
+HOST = 'localhost'
 port = int(sys.argv[1])
 ADDR = (HOST, port)
 TIMEOUT = 1000
@@ -39,22 +40,26 @@ def loadneighbors(filename):
             else:
                 sybil = False
 
-            neighbors.append((nip, nport, sybil))
+            addneighbor((nip, nport), sybil)
 
 
 def addneighbor(addr, sybil):
-    neighbors.append((addr[0], addr[1], sybil))
+    newneighb = Peer(addr[0], addr[1], sybil)
+    neighbors.append(newneighb)
 
 
 def updateneighbors(addr, sybil):
-    addneighbor(addr, sybil)
+    for neighbor in neighbors:
+        if addr[0] == neighbor.host and addr[1] == neighbor.port:
+            addneighbor(addr, sybil)
+            print("Added neighbor %s:%s" % (addr[0], addr[1]))
 
 
 def listneighbors():
     nlist = []
 
     for neighbor in neighbors:
-        nlist.append(str(neighbor[0]) + ":" + str(neighbor[1]))
+        nlist.append(str(neighbor))
 
     return nlist
 
@@ -87,7 +92,7 @@ def processmsg(msg, addr):
     idmsg = splitmsg[0]
     ttl = float(splitmsg[1])
     order = splitmsg[2]
-    data = splitmsg[3::]
+    data = splitmsg[3]
     data = data.split(',')
 
     if order == "PING":
@@ -99,33 +104,46 @@ def processmsg(msg, addr):
     elif order == "PEERS":
         peers(data)
 
-    addmsg(msg, addr, ttl)
-    print("id: %s, ttl: %s, order: %s, data: %s" % (idmsg, time.strftime("%d %b %Y %H:%M:%S", time.localtime(ttl)), order, data))
+    if ttl < 1:
+        addmsg(msg, addr, ttl)
+
+    print("Received id: %s, ttl: %s, order: %s" % (idmsg, ttl, order))
 
 
 def ping(data):
     host = data[0]
-    port = int(data[0])
+    port = int(data[1])
     ttl = 1
-    msg = Message(ttl, 'ALIVE', [HOST, PORT])
+    msg = Message(ttl, 'ALIVE', [HOST, port])
     addmsg(msg, ADDR, ttl)
+    print("-> Processed PING.")
 
 
 def alive(data):
     host = data[0]
-    port = int(data[0])
-    id = host + ':' + port
-    neighbors[id][2] = True
+    port = int(data[1])
+    bid = str(host) + ':' + str(port)
+    for neighbor in neighbors:
+        if neighbor.host == host and neighbor.port == port:
+            neighbor.alive = True
+    print("-> Processed ALIVE.")
 
 
 def hello(data):
     host = data[0]
     port = int(data[1])
-    if (host, port, False) not in neighbors:
-        updateneighbors((host, port), False)
+    updateneighbors((host, port), False)
     ttl = 1
     msg = Message(ttl, 'PEERS', listneighbors())
     addmsg(msg, ADDR, ttl)
+    print("-> Processed HELLO.")
+
+
+def peers(data):
+    for peer in data:
+        host, port = peer.split(':')
+        updateneighbors((host, port), False)
+    print("-> Processed PEERS.")
 
 
 class MsgCleaner(threading.Thread):
@@ -138,7 +156,7 @@ class MsgCleaner(threading.Thread):
         while self.running is True:
             with lock:
                 for msg in sent:
-                    if time.time() - msg[2] > TTL:
+                    if msg[2] > 0:
                         sent.remove(msg)
 
             time.sleep(0.0001)
@@ -159,17 +177,11 @@ class Server(threading.Thread):
 
         while self.running is True:
             msg, addr = server.recvfrom(BUFSIZE)
+            print(msg)
             if msg and addr:
-                print("Received: %s from %s" % (msg, addr))
-                print("")
                 with lock:
                     if validatemsg(msg.decode()):
                         processmsg(msg.decode(), addr)
-                    if addr not in neighbors:
-                        updateneighbors(addr)
-                # msg.decode()
-                # print("Received: %s from %s" % (msg, addr))
-                # addmsg("msg received", addr)
 
             time.sleep(0.0001)
 
@@ -186,19 +198,21 @@ class Client(threading.Thread):
     def run(self):
         client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
+        msg = Message(1, "HELLO", [HOST, port])
+        for neighbor in neighbors:
+            if neighbor.sybil is False:
+                client.sendto(str(msg).encode(), (neighbor.host, neighbor.port))
+
         while self.running is True:
             with lock:
                 if buf:
                     msg, addr, ttl = buf[0]
-                    if ttl - time.time() > 0:
-                        if buf[0] not in sent:
-                            for neighbor in neighbors:
-                                if not (neighbor[0], neighbor[1]) == addr:
-                                    client.sendto(msg.encode(), (neighbor[0], neighbor[1]))
-                                    sent.append(buf[0])
-                                    print("Sent: %s to %s" % (msg, (neighbor[0], neighbor[1])))
-                    # else:
-                        # print("TTL expired")
+                    if buf[0] not in sent:
+                        for neighbor in neighbors:
+                            if not (neighbor.host, neighbor.port) == addr:
+                                client.sendto(str(msg).encode(), (neighbor.host, int(neighbor.port)))
+                                sent.append(buf[0])
+                                print("Sent: %s to %s" % (msg, (neighbor.host, neighbor.port)))
                     delmsg()
 
             time.sleep(0.0001)
