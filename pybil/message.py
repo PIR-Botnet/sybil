@@ -11,10 +11,13 @@ class Message:
     def __str__(self):
         m = '{id};{ttl};{order};'.format(id=self.id, ttl=self.ttl, order=self.order)
 
-        for i, d in enumerate(self.data):
-            if i > 0:
-                m += ','
-            m += str(d)
+        if len(self.data) > 1:
+            for i, d in enumerate(self.data):
+                if i > 0:
+                    m += ','
+                m += str(d)
+        else:
+            m += self.data[0]
 
         return m
 

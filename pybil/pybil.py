@@ -1,188 +1,82 @@
 #!/usr/bin/env python3
 
+import json
+import select
 import socket
 import sys
 import threading
 import time
 
+from functions import *
 from message import Message
+from node import Node
 from peer import Peer
 
-HOST = 'localhost'
-port = int(sys.argv[1])
-ADDR = (HOST, port)
-TIMEOUT = 1000
-BUFSIZE = 1024
 TTL = 30
+NODE_AMOUNT = 200
+KNOWN_PEERS = [4567, 4580, 4600, 4620, 4650, 4570, 4590, 4610, 4630, 4640, 4660]
+JSON_DATA_PATH = "/home/pierre/Projects/PTIR/visu/data.json"
 
-buf = []
-sent = []
-neighborfile = sys.argv[2]
-neighbors = []
+clilock = threading.RLock()
+loglock = threading.RLock()
 
-lock = threading.RLock()
+host = ''
+port = 2400
 
+nodes = []
+peers = []
 
-def loadneighbors(filename):
-    with open(filename) as f:
-        data = f.read(4096)
-
-    data = data.replace("\n", "").split(';')
-
-    for neighbor in data:
-        if neighbor:
-            neighbor = neighbor.split(',')
-            nip = neighbor[0]
-            nport = int(neighbor[1])
-
-            if int(neighbor[2]) == 1:
-                sybil = True
-            else:
-                sybil = False
-
-            addneighbor((nip, nport), sybil)
+outputbuf = []
+logs = []
 
 
-def addneighbor(addr, sybil):
-    newneighb = Peer(addr[0], addr[1], sybil)
-    neighbors.append(newneighb)
+def update_json(peers_array):
+    dic = {
+        "nodes": [],
+        "edges": []
+    }
+
+    for peer in peers_array:
+        dic['nodes'].append({
+            "id": str(peer),
+            "label": peer.port
+        })
+        for p in peers:
+            edge_id = str(peer.port) + ':' + str(p.port)
+            dic['edges'].append({
+                "id": edge_id,
+                "from": str(peer),
+                "to": str(p)
+            })
+
+    file = open(JSON_DATA_PATH, 'w')
+    with file:
+        json.dump(dic, file, indent=2)
 
 
-def updateneighbors(addr, sybil):
-    for neighbor in neighbors:
-        if addr[0] == neighbor.host and addr[1] == neighbor.port:
-            addneighbor(addr, sybil)
-            print("Added neighbor %s:%s" % (addr[0], addr[1]))
+def run_update_json(delay):
+    while True:
+        update_json(peers)
+        time.sleep(delay)
 
 
-def listneighbors():
-    nlist = []
+class Logger(threading.Thread):
 
-    for neighbor in neighbors:
-        nlist.append(str(neighbor))
-
-    return nlist
-
-
-def addmsg(msg, addr, ttl):
-    buf.append((msg, addr, ttl))
-
-
-def delmsg():
-    buf.pop(0)
-
-
-def validatemsg(msg):
-    valid = True
-    msg = msg.split(";")
-
-    if len(msg) < 2:
-        valid = False
-    else:
-        if not msg[0].isnumeric and not len(msg[0]) == 5:
-            valid = False
-        if not msg[1].isnumeric:
-            valid = False
-
-    return valid
-
-
-def processmsg(msg, addr):
-    splitmsg = msg.split(';')
-    idmsg = splitmsg[0]
-    ttl = float(splitmsg[1])
-    order = splitmsg[2]
-    data = splitmsg[3]
-    data = data.split(',')
-
-    if order == "PING":
-        ping(data)
-    elif order == "ALIVE":
-        alive(data)
-    elif order == "HELLO":
-        hello(data)
-    elif order == "PEERS":
-        peers(data)
-
-    if ttl < 1:
-        addmsg(msg, addr, ttl)
-
-    print("Received id: %s, ttl: %s, order: %s" % (idmsg, ttl, order))
-
-
-def ping(data):
-    host = data[0]
-    port = int(data[1])
-    ttl = 1
-    msg = Message(ttl, 'ALIVE', [HOST, port])
-    addmsg(msg, ADDR, ttl)
-    print("-> Processed PING.")
-
-
-def alive(data):
-    host = data[0]
-    port = int(data[1])
-    bid = str(host) + ':' + str(port)
-    for neighbor in neighbors:
-        if neighbor.host == host and neighbor.port == port:
-            neighbor.alive = True
-    print("-> Processed ALIVE.")
-
-
-def hello(data):
-    host = data[0]
-    port = int(data[1])
-    updateneighbors((host, port), False)
-    ttl = 1
-    msg = Message(ttl, 'PEERS', listneighbors())
-    addmsg(msg, ADDR, ttl)
-    print("-> Processed HELLO.")
-
-
-def peers(data):
-    for peer in data:
-        host, port = peer.split(':')
-        updateneighbors((host, port), False)
-    print("-> Processed PEERS.")
-
-
-class MsgCleaner(threading.Thread):
-
-    def __init__(self):
+    def __init__(self, filename):
         threading.Thread.__init__(self)
         self.running = True
+        self.logfile = filename
+        self.logs = []
 
     def run(self):
         while self.running is True:
-            with lock:
-                for msg in sent:
-                    if msg[2] > 0:
-                        sent.remove(msg)
-
-            time.sleep(0.0001)
-
-    def kill(self):
-        self.running = False
-
-
-class Server(threading.Thread):
-
-    def __init__(self):
-        threading.Thread.__init__(self)
-        self.running = True
-
-    def run(self):
-        server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        server.bind(ADDR)
-
-        while self.running is True:
-            msg, addr = server.recvfrom(BUFSIZE)
-            print(msg)
-            if msg and addr:
-                with lock:
-                    if validatemsg(msg.decode()):
-                        processmsg(msg.decode(), addr)
-
+            with open(self.logfile, "a") as logfile:
+                with loglock:
+                    for msg in logs:
+                        log = "" + time.strftime("%d %b %Y %H:%M:%S", time.localtime(time.time())) + " [" + msg[0] + "] " + msg[1]
+                        logfile.write(log + "\n")
+                        print(log)
+                        logs.remove(msg)
             time.sleep(0.0001)
 
     def kill(self):
@@ -198,31 +92,68 @@ class Client(threading.Thread):
     def run(self):
         client = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        msg = Message(1, "HELLO", [HOST, port])
-        for neighbor in neighbors:
-            if neighbor.sybil is False:
-                client.sendto(str(msg).encode(), (neighbor.host, neighbor.port))
+        # Retrieving some peers
+        msg = Message(1, "HELLO", [host, port])
+        for peer in peers:
+            s.sendto(str(msg).encode(), (peer.host, peer.port))
+            logs.append(("MSG" + str(port), "Sent: %s to %s:%s" % (msg, peer.host, peer.port)))
 
+        # Main loop
         while self.running is True:
-            with lock:
-                if buf:
-                    msg, addr, ttl = buf[0]
-                    if buf[0] not in sent:
-                        for neighbor in neighbors:
-                            if not (neighbor.host, neighbor.port) == addr:
-                                client.sendto(str(msg).encode(), (neighbor.host, int(neighbor.port)))
-                                sent.append(buf[0])
-                                print("Sent: %s to %s" % (msg, (neighbor.host, neighbor.port)))
-                    delmsg()
+            with clilock:
+                if outputbuf:
+                    msg, addr, ttl = outputbuf[0]
+                    for peer in peers:
+                        client.sendto(str(msg).encode(), (peer.host, int(peer.port)))
+                        with loglock:
+                            logs.append(("MSG" + str(addr[1]), "Sent: %s to %s" % (msg, (peer.host, peer.port))))
+                            # logs.append(("LEL", "BITE BITE BITE\n\n\n"))
+                    outputbuf.pop(0)
 
-            time.sleep(0.0001)
+            time.sleep(0.2)
+
+    def kill(self):
+        self.running = False
 
 
-if __name__ == "__main__":
-    loadneighbors(neighborfile)
-    msgcleaner = MsgCleaner()
-    server = Server()
-    client = Client()
-    msgcleaner.start()
-    server.start()
-    client.start()
+if __name__ == '__main__':
+        # Starting logger
+        logger = Logger("../logs/" + time.strftime("%d-%b_%H%M%S", time.localtime(time.time())))
+        logger.start()
+        logs.append(("INFO", "Started logging."))
+
+        # Retrieving local IP
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect(("www.google.com", 80))
+        host = s.getsockname()[0]
+        s.close()
+        logs.append(("INFO", "Retrieved local IP."))
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        t = threading.Thread(target=run_update_json, args=[1])
+        t.start()
+
+        # Setting up sybil nodes
+        for p in range(port, port + NODE_AMOUNT):
+            node = Node(host, p, peers, nodes, outputbuf, logs, clilock, loglock)
+            nodes.append(node)
+            node.start()
+            logs.append(("NODE", "Instantiated new node on port %s." % (p)))
+
+        # Creating known peers
+        for p in KNOWN_PEERS:
+            peer = Peer(host, p)
+            peers.append(peer)
+            logs.append(("PEER", "Added new peer %s:%s" % (host, p)))
+
+        client = Client()
+        client.start()
+
+        for node in nodes:
+            msg = Message(1, "HELLO", [node.host, node.port])
+            addmsg(msg, (node.host, node.port), 1, outputbuf, clilock)
+
+        for node in nodes:
+            msg = Message(1, "GET", ["http://pcksr.net/ptir.php?sybil"])
+            addmsg(msg, (node.host, node.port), 1, outputbuf, clilock)
