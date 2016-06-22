@@ -4,6 +4,7 @@ import socket
 import sys
 import threading
 import time
+import uuid
 
 HOST = ''
 PORT = 2400
@@ -77,13 +78,12 @@ class Text_Input(threading.Thread):
 
         def run(self):
             while self.running is True:
-                msgid = input("ID: ")
                 order = input("Order: ")
                 data = input("Data: ")
                 port = int(input("Port: "))
                 ttl = (time.time() + 10)
 
-                msg = "" + msgid + ";" + str(1) + ";" + order + ";" + data
+                msg = "" + str(uuid.uuid4()) + ";" + str(1) + ";" + order + ";" + data
 
                 addmsg(msg, ("localhost", port), ttl)
                 time.sleep(0.0001)

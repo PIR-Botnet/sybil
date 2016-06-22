@@ -12,8 +12,11 @@ if (isset($_GET['sybil'])) {
     fseek($legitfile, 0);
     $legit += 1;
     fputs($legitfile, $legit);
-    fclose($legitfile);
+
 }
+
+fclose($legitfile);
+fclose($sybilfile);
 
 echo "Legit: $legit";
 echo "Sybil: $sybil";
