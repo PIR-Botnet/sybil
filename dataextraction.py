@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import csv
 import json
 import sys
 
@@ -27,11 +28,22 @@ def extract(i):
 
     for node in nodes:
         if node[1] > 0:
-            count[i] += 1
+            count[i-1] += 1
 
-    print("Number of connected nodes : ", count[i])
+    print("Number of connected nodes : ", count[i-1])
 
 for i in range(1,int(no_files)):
     extract(i)
 
 print(count)
+
+f = open("out.csv", 'w', newline='')
+
+try:
+    writer = csv.writer(f)
+    writer.writerow(('Time', 'Number of connected peers'))
+
+    for i, c in enumerate(count):
+        writer.writerow((i, c))
+finally:
+    f.close()

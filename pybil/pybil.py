@@ -12,10 +12,11 @@ from message import Message
 from node import Node
 from peer import Peer
 
+LOG_DIR = "/home/pierre/Projects/PTIR/logs/"
+
 TTL = 30
 NODE_AMOUNT = 200
-KNOWN_PEERS = [4567, 4580, 4600, 4620, 4650, 4570, 4590, 4610, 4630, 4640, 4660]
-JSON_DATA_PATH = "/home/pierre/Projects/PTIR/visu/data.json"
+KNOWN_PEERS = [4567, 4580, 4600, 4620, 4650]
 
 clilock = threading.RLock()
 loglock = threading.RLock()
@@ -28,36 +29,6 @@ peers = []
 
 outputbuf = []
 logs = []
-
-
-def update_json(peers_array):
-    dic = {
-        "nodes": [],
-        "edges": []
-    }
-
-    for peer in peers_array:
-        dic['nodes'].append({
-            "id": str(peer),
-            "label": peer.port
-        })
-        for p in peers:
-            edge_id = str(peer.port) + ':' + str(p.port)
-            dic['edges'].append({
-                "id": edge_id,
-                "from": str(peer),
-                "to": str(p)
-            })
-
-    file = open(JSON_DATA_PATH, 'w')
-    with file:
-        json.dump(dic, file, indent=2)
-
-
-def run_update_json(delay):
-    while True:
-        update_json(peers)
-        time.sleep(delay)
 
 
 class Logger(threading.Thread):
@@ -118,7 +89,7 @@ class Client(threading.Thread):
 
 if __name__ == '__main__':
         # Starting logger
-        logger = Logger("../logs/" + time.strftime("%d-%b_%H%M%S", time.localtime(time.time())))
+        logger = Logger(LOG_DIR + time.strftime("%d-%b_%H%M%S", time.localtime(time.time())))
         logger.start()
         logs.append(("INFO", "Started logging."))
 
@@ -130,9 +101,6 @@ if __name__ == '__main__':
         logs.append(("INFO", "Retrieved local IP."))
 
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-        t = threading.Thread(target=run_update_json, args=[1])
-        t.start()
 
         # Setting up sybil nodes
         for p in range(port, port + NODE_AMOUNT):
